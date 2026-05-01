@@ -1,64 +1,51 @@
-experiment_name: "nnunetv2_baseline"
-base_trainer: "nnUNetTrainer"
-dataset_id: "Dataset003_sk-fibers_hzvt-augmented-2"
-configuration: "3d_fullres"
-fold: 0
-num_gpus: 4
-plans: "nnUNetResEncUNetLPlans"
-
+base_trainer: nnUNetTrainer
+configuration: 3d_fullres
 configurations:
-  - name: "baseline"
-    params:
-      initial_lr: 1e-2
-      weight_decay: 3e-5
-      num_epochs: 1000
-  
-  - name: "lr_2e_2"
-    params:
-      initial_lr: 2e-2
-      weight_decay: 3e-5
-      num_epochs: 1000
-  
-  - name: "lr_7e_3"
-    params:
-      initial_lr: 7e-3
-      weight_decay: 3e-5
-      num_epochs: 1000
-  
-  - name: "lr_3e_2_150epochs"
-    params:
-      initial_lr: 3e-2
-      weight_decay: 3e-5
-      num_epochs: 150
-
-  - name: "lr_2e_2_150epochs"
-    params:
-      initial_lr: 2e-2
-      weight_decay: 3e-5
-      num_epochs: 150
-
-  - name: "lr_3e_3"
-    params:
-      initial_lr: 3e-3
-      weight_decay: 3e-5
-      num_epochs: 1000
-
-  - name: "lr_1e_3"
-    params:
-      initial_lr: 1e-3
-      weight_decay: 3e-5
-      num_epochs: 1000
-  
-  - name: "lr_1e_2_150epochs"
-    params:
-      initial_lr: 1e-2
-      weight_decay: 3e-5
-      num_epochs: 150
-
+- name: baseline
+  params:
+    initial_lr: 1e-2
+    num_epochs: 1000
+    weight_decay: 3e-5
+- name: lr_2e_2
+  params:
+    initial_lr: 2e-2
+    num_epochs: 1000
+    weight_decay: 3e-5
+- name: lr_7e_3
+  params:
+    initial_lr: 7e-3
+    num_epochs: 1000
+    weight_decay: 3e-5
+- name: lr_3e_2_150epochs
+  params:
+    initial_lr: 3e-2
+    num_epochs: 150
+    weight_decay: 3e-5
+- name: lr_2e_2_150epochs
+  params:
+    initial_lr: 2e-2
+    num_epochs: 150
+    weight_decay: 3e-5
+- name: lr_3e_3
+  params:
+    initial_lr: 3e-3
+    num_epochs: 1000
+    weight_decay: 3e-5
+- name: lr_1e_3
+  params:
+    initial_lr: 1e-3
+    num_epochs: 1000
+    weight_decay: 3e-5
+- name: lr_1e_2_150epochs
+  params:
+    initial_lr: 1e-2
+    num_epochs: 150
+    weight_decay: 3e-5
+dataset_id: Dataset003_sk-fibers_hzvt-augmented-2
 evaluation:
   evaluation_script: /path/to/custom_evaluation_script.py
   evaluation_script_dir: /path/to/custom_evaluation_script.py
-  labels_folder: /path/to/labels
+  labels_folder: local_data/PHercParis2Fr47/surface_volume.zarr/
   metrics:
   - hyperparameters:
       ignore_index: 0
@@ -76,5 +63,9 @@ evaluation:
       ignore_index: 0
       num_classes: 4
     type: connected_components
-  output_folder: /path/to/evaluation
-  predictions_base_folder: /path/to/predictions
+  output_folder: reports/
+  predictions_base_folder: predictions/
+experiment_name: nnunetv2_baseline
+fold: 0
+num_gpus: 4
+plans: nnUNetResEncUNetLPlans
