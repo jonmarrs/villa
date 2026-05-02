@@ -20,6 +20,7 @@ from training.visualization.plotting import save_debug_gif, export_data_dict_as_
 from builders.build_network_from_config import NetworkFromConfig
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss, BCELoss
 from training.losses.losses import MaskedCosineLoss, BCEDiceLoss
+from training.losses.betti_loss import BettiLoss
 from configuration.config_manager import ConfigManager
 
 
@@ -111,6 +112,7 @@ class BaseTrainer:
             "CrossEntropyLoss": CrossEntropyLoss,
             "MSELoss": MSELoss,
             "MaskedCosineLoss": MaskedCosineLoss,
+            "BettiLoss": BettiLoss,
         }
 
         loss_fns = {}
