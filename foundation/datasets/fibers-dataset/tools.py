@@ -2,8 +2,6 @@
 
 """Contains various filters and tools for handling papyrus analysis.
 
-TODO:  convert bottleneck code over to cupy for GPU speed up, along with other performance optimization.
-
 Brett Olsen, March 2024
 """
 
