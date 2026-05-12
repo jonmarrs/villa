@@ -522,6 +522,7 @@ static int vs__vcps_write_binary_data(FILE* fp, const void* data, const char* sr
 //zarr
 static void vs__json_parse_int32_array(json_object *array_obj, int32_t output[3]);
 static void vs__log_msg(vs__log_level_e level, const char* file, const char* func, int line, const char* fmt, ...) {
+    if (level <= LOG_INFO) return;
 
     static const char* level_strings[] = {
         "INFO",
