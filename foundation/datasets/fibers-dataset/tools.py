@@ -262,6 +262,112 @@ def detect_ridges(volume, gamma=1.5, beta1=0.5, beta2=0.5, gauss_sigma=2, sigma=
  
     return ridges
 
+def _tuple3(value, name):
+    if isinstance(value, int):
+        if value <= 0:
+            raise ValueError(f"{name} must be positive")
+        return (value, value, value)
+
+    if len(value) != 3:
+        raise ValueError(f"{name} must be an int or a length-3 sequence")
+
+    result = tuple(int(v) for v in value)
+    if any(v <= 0 for v in result):
+        raise ValueError(f"{name} entries must be positive")
+    return result
+
+
+def _is_cupy_array(array):
+    return GPU_AVAILABLE and isinstance(array, cp.ndarray)
+
+
+def _default_halo(gauss_sigma):
+    return max(3, int(math.ceil(4 * float(gauss_sigma))) + 2)
+
+
+def detect_ridges_tiled(
+    volume,
+    gamma=1.5,
+    beta1=0.5,
+    beta2=0.5,
+    gauss_sigma=2,
+    sigma=6,
+    chunk_shape=(128, 128, 128),
+    halo=None,
+    output=None,
+    output_backend="same",
+):
+    """Run ridge detection in overlapping tiles.
+
+    ``detect_ridges`` materializes a full ``(..., 3, 3)`` Hessian and the
+    corresponding eigenvalue tensor. That is fast for moderate arrays but can
+    exceed GPU memory on real fibers volumes. This tiled wrapper keeps those
+    large intermediates bounded by ``chunk_shape + 2 * halo`` while preserving
+    the existing full-volume implementation for each tile.
+
+    When ``xp`` is CuPy and ``volume`` is a NumPy array or memmap, each tile is
+    copied to the GPU, processed there, and copied back to a NumPy output array
+    by default. This avoids requiring the whole production volume to fit in
+    device memory.
+    """
+    chunk_z, chunk_y, chunk_x = _tuple3(chunk_shape, "chunk_shape")
+    if halo is None:
+        halo = _default_halo(gauss_sigma)
+    halo_z, halo_y, halo_x = _tuple3(halo, "halo")
+
+    zmax, ymax, xmax = volume.shape
+    output_on_gpu = (
+        output_backend == "cupy"
+        or (output_backend == "same" and _is_cupy_array(volume))
+    )
+
+    if output is None:
+        out_xp = cp if output_on_gpu else np
+        output = out_xp.empty(volume.shape, dtype=float)
+
+    for z0 in range(0, zmax, chunk_z):
+        z1 = min(z0 + chunk_z, zmax)
+        hz0 = max(0, z0 - halo_z)
+        hz1 = min(zmax, z1 + halo_z)
+        z_crop = slice(z0 - hz0, z1 - hz0)
+
+        for y0 in range(0, ymax, chunk_y):
+            y1 = min(y0 + chunk_y, ymax)
+            hy0 = max(0, y0 - halo_y)
+            hy1 = min(ymax, y1 + halo_y)
+            y_crop = slice(y0 - hy0, y1 - hy0)
+
+            for x0 in range(0, xmax, chunk_x):
+                x1 = min(x0 + chunk_x, xmax)
+                hx0 = max(0, x0 - halo_x)
+                hx1 = min(xmax, x1 + halo_x)
+                x_crop = slice(x0 - hx0, x1 - hx0)
+
+                block = volume[hz0:hz1, hy0:hy1, hx0:hx1]
+                if GPU_AVAILABLE and xp is cp and not _is_cupy_array(block):
+                    block = cp.asarray(block)
+
+                ridges = detect_ridges(
+                    block,
+                    gamma=gamma,
+                    beta1=beta1,
+                    beta2=beta2,
+                    gauss_sigma=gauss_sigma,
+                    sigma=sigma,
+                )[z_crop, y_crop, x_crop]
+
+                if _is_cupy_array(ridges) and not _is_cupy_array(output):
+                    ridges = cp.asnumpy(ridges)
+
+                output[z0:z1, y0:y1, x0:x1] = ridges
+
+                del block, ridges
+                if GPU_AVAILABLE and xp is cp:
+                    cp.get_default_memory_pool().free_all_blocks()
+
+    return output
+
+
 def detect_vesselness(volume, gamma=1.5, beta1=0.5, beta2=0.5, gauss_sigma=2, sigma=6):
     """
     Detect vesselness using the Frangi filter.

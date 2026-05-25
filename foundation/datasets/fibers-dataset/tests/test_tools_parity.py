@@ -204,3 +204,49 @@ def test_hessian_parity(small_volume, monkeypatch):
     # so allow a relaxed tolerance on the Hessian magnitudes.
     np.testing.assert_allclose(np_hess, cp_hess, rtol=1e-3, atol=1e-4)
     np.testing.assert_array_equal(np_zero, cp_zero)
+
+
+def test_detect_ridges_tiled_matches_full_single_tile(force_numpy_backend, small_volume):
+    full = tools.detect_ridges(small_volume.copy(), gauss_sigma=1, sigma=2)
+    tiled = tools.detect_ridges_tiled(
+        small_volume.copy(),
+        gauss_sigma=1,
+        sigma=2,
+        chunk_shape=small_volume.shape,
+        halo=3,
+    )
+    np.testing.assert_allclose(tiled, full, rtol=1e-10, atol=1e-12)
+
+
+def test_detect_ridges_tiled_numpy_small_chunks(force_numpy_backend, rng):
+    volume = rng.random((10, 14, 16)).astype(np.float32)
+    out = tools.detect_ridges_tiled(
+        volume,
+        gauss_sigma=1,
+        sigma=2,
+        chunk_shape=(5, 7, 8),
+        halo=3,
+    )
+    assert out.shape == volume.shape
+    assert np.isfinite(out).all()
+    assert float(out.min()) >= 0.0
+
+
+@requires_cupy
+def test_detect_ridges_tiled_cupy_streams_numpy_input_to_numpy_output(rng, monkeypatch):
+    volume = rng.random((10, 14, 16)).astype(np.float32)
+
+    monkeypatch.setattr(tools, "xp", cp)
+    monkeypatch.setattr(tools, "xndimage", cupy_ndimage)
+    out = tools.detect_ridges_tiled(
+        volume,
+        gauss_sigma=1,
+        sigma=2,
+        chunk_shape=(5, 7, 8),
+        halo=3,
+    )
+
+    assert isinstance(out, np.ndarray)
+    assert out.shape == volume.shape
+    assert np.isfinite(out).all()
+    assert float(out.min()) >= 0.0
