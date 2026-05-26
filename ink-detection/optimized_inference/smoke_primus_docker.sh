@@ -13,6 +13,21 @@ IMAGE="${IMAGE:-ink-detection-optimized-inference:gpu-primus-smoke}"
 VILLA_REPO="${VILLA_REPO:-https://github.com/ScrollPrize/villa.git}"
 VILLA_REF="${VILLA_REF:-main}"
 DOCKER_GPU_ARGS="${DOCKER_GPU_ARGS:---gpus all}"
+DOCKER_PREFLIGHT_IMAGE="${DOCKER_PREFLIGHT_IMAGE:-hello-world:latest}"
+
+if [[ "${DOCKER_SMOKE_PREFLIGHT:-1}" != "0" ]]; then
+  docker info >/dev/null
+  if ! docker run --rm --network=none "$DOCKER_PREFLIGHT_IMAGE" >/dev/null; then
+    cat >&2 <<'EOF'
+ERROR: Docker cannot execute a trivial container on this host.
+
+The Primus smoke builds a CUDA image and then runs a checkpoint/load/forward
+test inside that image. Fix Docker container execution first, or set
+DOCKER_SMOKE_PREFLIGHT=0 if you intentionally want to skip this fast check.
+EOF
+    exit 1
+  fi
+fi
 
 docker build --target gpu \
   --build-arg INSTALL_PRIMUS_DEPS=1 \
