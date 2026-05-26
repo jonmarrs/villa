@@ -16,6 +16,54 @@ DOCKER_GPU_ARGS="${DOCKER_GPU_ARGS:---gpus all}"
 DOCKER_PREFLIGHT_IMAGE="${DOCKER_PREFLIGHT_IMAGE:-hello-world:latest}"
 DOCKER_PREFLIGHT_ARGS="${DOCKER_PREFLIGHT_ARGS:---network=none --security-opt apparmor=unconfined}"
 
+print_docker_smoke_diagnostics() {
+  local failure_output="$1"
+
+  echo
+  echo "Docker diagnostics:"
+  echo "  docker_cli=$(docker version --format '{{.Client.Version}}' 2>/dev/null || echo unavailable)"
+  echo "  docker_server=$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo unavailable)"
+  echo "  docker_host=${DOCKER_HOST:-default}"
+  echo "  storage_driver=$(docker info --format '{{.Driver}}' 2>/dev/null || echo unavailable)"
+  echo "  cgroup_driver=$(docker info --format '{{.CgroupDriver}}' 2>/dev/null || echo unavailable)"
+  echo "  cgroup_version=$(docker info --format '{{.CgroupVersion}}' 2>/dev/null || echo unavailable)"
+  if command -v newuidmap >/dev/null 2>&1 && command -v newgidmap >/dev/null 2>&1; then
+    echo "  uidmap=available"
+  else
+    echo "  uidmap=missing newuidmap/newgidmap"
+  fi
+  if docker info --format '{{json .SecurityOptions}}' 2>/dev/null | grep -qi rootless; then
+    echo "  rootless=true"
+  else
+    echo "  rootless=false_or_unreported"
+  fi
+
+  case "$failure_output" in
+    *"error mounting \"devpts\""* | *"gid=5: invalid argument"*)
+      echo
+      echo "Likely cause:"
+      echo "  Docker reached OCI runtime startup, but this host cannot mount devpts"
+      echo "  with the gid mapping requested by runc. On rootless/user-namespace"
+      echo "  Docker setups, install uidmap/newuidmap/newgidmap or use a system"
+      echo "  Docker daemon with a compatible AppArmor/user-namespace policy."
+      ;;
+    *"failed to Lchown"* | *"invalid argument"*"Lchown"*)
+      echo
+      echo "Likely cause:"
+      echo "  Docker pulled image layers but cannot register files owned by IDs"
+      echo "  outside the current user namespace. Install uidmap/newuidmap/newgidmap"
+      echo "  or use a system Docker daemon before treating this as an image build"
+      echo "  failure."
+      ;;
+    *"AppArmor"* | *"apparmor"* | *"permission denied"*)
+      echo
+      echo "Likely cause:"
+      echo "  Docker container execution is blocked by the host security policy."
+      echo "  Check AppArmor unprivileged user namespace policy or use system Docker."
+      ;;
+  esac
+}
+
 if [[ "${DOCKER_SMOKE_PREFLIGHT:-1}" != "0" ]]; then
   docker info >/dev/null
   set +e
@@ -41,6 +89,7 @@ EOF
       echo
       echo "Preflight output:"
       printf '%s\n' "$preflight_output" | sed 's/^/  /'
+      print_docker_smoke_diagnostics "$preflight_output" | sed 's/^/  /'
     } >&2
     exit 1
   fi
