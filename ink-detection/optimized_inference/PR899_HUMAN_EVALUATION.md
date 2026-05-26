@@ -47,8 +47,10 @@ The useful contract is narrow:
   observed failures are AppArmor/default-profile access errors, `runc`
   cgroup/devpts setup errors, and subordinate-ID layer extraction errors such as
   `failed to Lchown "/etc/gshadow" for UID 0, GID 42`. The smoke script now
-  runs a cheap container-execution preflight before building the CUDA image, and
-  an honest end-to-end container smoke still requires a privileged host fix.
+  runs a cheap container-execution preflight before building the CUDA image and
+  prints Docker version/storage/cgroup/uidmap diagnostics with likely-cause
+  classification for these host-level failures. An honest end-to-end container
+  smoke still requires a privileged host fix.
 - The new unit tests exercise the wrapper shape contract and checkpoint loading
   against a stubbed `NetworkFromConfig`, so they verify the PR's local logic
   without requiring a heavyweight Primus checkpoint in CI.
