@@ -38,12 +38,14 @@ One limitation remains: I have not completed an end-to-end Docker container
 smoke on my VM. Docker is part of the official Villa workflow here, and I agree
 that the container path should be tested before claiming full runtime support.
 I installed Docker 29.5.2 locally and got the daemon/containerd/DNS path far
-enough to pull images and build metadata-only Dockerfiles, but real container
-execution is blocked on this host by missing privileged rootless prerequisites
-(`newuidmap`/`newgidmap` or system Docker/AppArmor policy). The observed
-failures are `runc` cgroup/devpts setup errors and subordinate-ID layer
-extraction errors.
+enough to pull images, but real container execution and CUDA image layer
+registration are blocked on this host by missing privileged rootless
+prerequisites (`newuidmap`/`newgidmap` or system Docker/AppArmor policy). The
+observed failures include AppArmor/default-profile access errors, `runc`
+cgroup/devpts setup errors, and subordinate-ID layer extraction errors like
+`failed to Lchown "/etc/gshadow" for UID 0, GID 42`.
 
 So the current state is: the Python loader contract is tested, the Docker
-dependency path is explicit, and I am not claiming the GPU container smoke has
-passed until it has actually run on a host with working container execution.
+dependency path is explicit, the smoke script fails fast when Docker cannot run
+a trivial container, and I am not claiming the GPU container smoke has passed
+until it has actually run on a host with working container execution.
