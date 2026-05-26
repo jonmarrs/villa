@@ -16,6 +16,27 @@ DOCKER_GPU_ARGS="${DOCKER_GPU_ARGS:---gpus all}"
 DOCKER_PREFLIGHT_IMAGE="${DOCKER_PREFLIGHT_IMAGE:-hello-world:latest}"
 DOCKER_PREFLIGHT_ARGS="${DOCKER_PREFLIGHT_ARGS:---network=none --security-opt apparmor=unconfined}"
 
+print_host_fix_hint() {
+  cat <<'EOF'
+
+Host fix candidates:
+  1. Use a normal system Docker daemon, then rerun:
+       sudo apt-get update
+       sudo apt-get install -y docker.io
+       sudo usermod -aG docker "$USER"
+       newgrp docker
+
+  2. For rootless/user-namespace Docker, install privileged helpers first:
+       sudo apt-get update
+       sudo apt-get install -y uidmap apparmor-utils slirp4netns fuse-overlayfs
+
+     Ubuntu hosts with AppArmor-restricted unprivileged user namespaces may also
+     need a root-owned AppArmor profile for the rootlesskit binary path.
+
+  See PR899_DOCKER_HOST_FIX.md for the full host setup checklist.
+EOF
+}
+
 check_docker_daemon() {
   if ! command -v docker >/dev/null 2>&1; then
     cat >&2 <<'EOF'
@@ -24,6 +45,7 @@ ERROR: Docker CLI is not installed or is not on PATH.
 Install Docker or run this smoke from a host with Docker available before
 validating the Primus optimized-inference container path.
 EOF
+    print_host_fix_hint >&2
     exit 1
   fi
 
@@ -50,6 +72,7 @@ EOF
     echo
     echo "docker info output:"
     printf '%s\n' "$docker_info_output" | sed 's/^/  /'
+    print_host_fix_hint | sed 's/^/  /'
   } >&2
   exit 1
 }
@@ -84,6 +107,7 @@ print_docker_smoke_diagnostics() {
       echo "  with the gid mapping requested by runc. On rootless/user-namespace"
       echo "  Docker setups, install uidmap/newuidmap/newgidmap or use a system"
       echo "  Docker daemon with a compatible AppArmor/user-namespace policy."
+      print_host_fix_hint
       ;;
     *"failed to Lchown"* | *"invalid argument"*"Lchown"*)
       echo
@@ -92,12 +116,14 @@ print_docker_smoke_diagnostics() {
       echo "  outside the current user namespace. Install uidmap/newuidmap/newgidmap"
       echo "  or use a system Docker daemon before treating this as an image build"
       echo "  failure."
+      print_host_fix_hint
       ;;
     *"AppArmor"* | *"apparmor"* | *"permission denied"*)
       echo
       echo "Likely cause:"
       echo "  Docker container execution is blocked by the host security policy."
       echo "  Check AppArmor unprivileged user namespace policy or use system Docker."
+      print_host_fix_hint
       ;;
   esac
 }

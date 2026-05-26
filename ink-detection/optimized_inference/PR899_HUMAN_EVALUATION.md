@@ -50,8 +50,9 @@ The useful contract is narrow:
   checks Docker daemon connectivity and runs a cheap container-execution
   preflight before building the CUDA image. It prints Docker
   version/storage/cgroup/uidmap diagnostics with likely-cause classification
-  for these host-level failures. An honest end-to-end container smoke still
-  requires a privileged host fix.
+  and points to `PR899_DOCKER_HOST_FIX.md` for system-Docker and
+  rootless/user-namespace setup commands. An honest end-to-end container smoke
+  still requires a privileged host fix.
 - The new unit tests exercise the wrapper shape contract and checkpoint loading
   against a stubbed `NetworkFromConfig`, so they verify the PR's local logic
   without requiring a heavyweight Primus checkpoint in CI.
