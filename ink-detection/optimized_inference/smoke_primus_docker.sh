@@ -14,10 +14,16 @@ VILLA_REPO="${VILLA_REPO:-https://github.com/ScrollPrize/villa.git}"
 VILLA_REF="${VILLA_REF:-main}"
 DOCKER_GPU_ARGS="${DOCKER_GPU_ARGS:---gpus all}"
 DOCKER_PREFLIGHT_IMAGE="${DOCKER_PREFLIGHT_IMAGE:-hello-world:latest}"
+DOCKER_PREFLIGHT_ARGS="${DOCKER_PREFLIGHT_ARGS:---network=none --security-opt apparmor=unconfined}"
 
 if [[ "${DOCKER_SMOKE_PREFLIGHT:-1}" != "0" ]]; then
   docker info >/dev/null
-  if ! docker run --rm --network=none "$DOCKER_PREFLIGHT_IMAGE" >/dev/null; then
+  set +e
+  preflight_output="$(docker run --rm $DOCKER_PREFLIGHT_ARGS "$DOCKER_PREFLIGHT_IMAGE" 2>&1)"
+  preflight_status=$?
+  set -e
+
+  if [[ $preflight_status -ne 0 ]]; then
     cat >&2 <<'EOF'
 ERROR: Docker cannot execute a trivial container on this host.
 
@@ -25,6 +31,17 @@ The Primus smoke builds a CUDA image and then runs a checkpoint/load/forward
 test inside that image. Fix Docker container execution first, or set
 DOCKER_SMOKE_PREFLIGHT=0 if you intentionally want to skip this fast check.
 EOF
+    {
+      echo
+      echo "Preflight command:"
+      echo "  docker run --rm $DOCKER_PREFLIGHT_ARGS $DOCKER_PREFLIGHT_IMAGE"
+      echo
+      echo "Docker host:"
+      echo "  ${DOCKER_HOST:-default}"
+      echo
+      echo "Preflight output:"
+      printf '%s\n' "$preflight_output" | sed 's/^/  /'
+    } >&2
     exit 1
   fi
 fi

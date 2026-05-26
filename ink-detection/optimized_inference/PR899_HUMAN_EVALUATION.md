@@ -41,12 +41,14 @@ The useful contract is narrow:
 - Local Docker work on 2026-05-25 installed Docker 29.5.2 static binaries and
   rootless extras under `~/.local/bin`. A user-owned daemon can be started from
   the Neo workspace with `tools/start-userns-docker.sh`; it connects containerd,
-  resolves DNS, pulls `hello-world`, and can build metadata-only Dockerfiles.
-  Full container execution and Dockerfile `RUN` layers are still blocked on this
-  host because `newuidmap`/`newgidmap` are unavailable and no sudo-owned system
-  Docker/AppArmor policy is installed. The observed failures are `runc`
-  cgroup/devpts setup errors and subordinate-ID layer extraction errors, so an
-  honest end-to-end container smoke still requires a privileged host fix.
+  resolves DNS, and pulls images. Full container execution and Dockerfile layer
+  extraction are still blocked on this host because `newuidmap`/`newgidmap` are
+  unavailable and no sudo-owned system Docker/AppArmor policy is installed. The
+  observed failures are AppArmor/default-profile access errors, `runc`
+  cgroup/devpts setup errors, and subordinate-ID layer extraction errors such as
+  `failed to Lchown "/etc/gshadow" for UID 0, GID 42`. The smoke script now
+  runs a cheap container-execution preflight before building the CUDA image, and
+  an honest end-to-end container smoke still requires a privileged host fix.
 - The new unit tests exercise the wrapper shape contract and checkpoint loading
   against a stubbed `NetworkFromConfig`, so they verify the PR's local logic
   without requiring a heavyweight Primus checkpoint in CI.
@@ -102,6 +104,10 @@ VILLA_REPO=https://github.com/jonmarrs/villa.git \
 VILLA_REF=primus-loader-optimized-inference \
 ./smoke_primus_docker.sh
 ```
+
+The smoke script intentionally checks trivial Docker container execution before
+pulling/building the CUDA image. `DOCKER_SMOKE_PREFLIGHT=0` bypasses only that
+fast guard for build debugging; it does not make the final runtime smoke valid.
 
 ## Still Required Before Reviewer Reply
 
