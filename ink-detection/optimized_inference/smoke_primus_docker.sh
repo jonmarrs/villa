@@ -16,6 +16,44 @@ DOCKER_GPU_ARGS="${DOCKER_GPU_ARGS:---gpus all}"
 DOCKER_PREFLIGHT_IMAGE="${DOCKER_PREFLIGHT_IMAGE:-hello-world:latest}"
 DOCKER_PREFLIGHT_ARGS="${DOCKER_PREFLIGHT_ARGS:---network=none --security-opt apparmor=unconfined}"
 
+check_docker_daemon() {
+  if ! command -v docker >/dev/null 2>&1; then
+    cat >&2 <<'EOF'
+ERROR: Docker CLI is not installed or is not on PATH.
+
+Install Docker or run this smoke from a host with Docker available before
+validating the Primus optimized-inference container path.
+EOF
+    exit 1
+  fi
+
+  set +e
+  docker_info_output="$(docker info 2>&1)"
+  docker_info_status=$?
+  set -e
+
+  if [[ $docker_info_status -eq 0 ]]; then
+    return 0
+  fi
+
+  cat >&2 <<'EOF'
+ERROR: Docker CLI is available, but it cannot reach a Docker daemon.
+
+The Primus smoke needs Docker daemon access to build and run the GPU image.
+Start Docker, set DOCKER_HOST for a non-default daemon, or run on a host with
+system Docker available.
+EOF
+  {
+    echo
+    echo "Docker host:"
+    echo "  ${DOCKER_HOST:-default}"
+    echo
+    echo "docker info output:"
+    printf '%s\n' "$docker_info_output" | sed 's/^/  /'
+  } >&2
+  exit 1
+}
+
 print_docker_smoke_diagnostics() {
   local failure_output="$1"
 
@@ -65,7 +103,7 @@ print_docker_smoke_diagnostics() {
 }
 
 if [[ "${DOCKER_SMOKE_PREFLIGHT:-1}" != "0" ]]; then
-  docker info >/dev/null
+  check_docker_daemon
   set +e
   preflight_output="$(docker run --rm $DOCKER_PREFLIGHT_ARGS "$DOCKER_PREFLIGHT_IMAGE" 2>&1)"
   preflight_status=$?
