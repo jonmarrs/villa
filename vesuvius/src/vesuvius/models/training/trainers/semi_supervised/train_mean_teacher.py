@@ -334,13 +334,13 @@ class TrainMeanTeacher(BaseTrainer):
                     if pred_keys:
                         pk = pred_keys[0]
                         ps = tuple(outputs[pk].shape)
-                        print(f"[MT DEBUG] pred[{pk}] shape: {ps}")
+                        # print(f"[MT DEBUG] pred[{pk}] shape: {ps}")
                     # Labeled/unlabeled counts
                     is_unlabeled = targets_dict.get('is_unlabeled', None)
                     if is_unlabeled is not None:
                         lbl_mask = (is_unlabeled == 0)
                         ulb_mask = (is_unlabeled == 1)
-                        print(f"[MT DEBUG] labeled count: {int(lbl_mask.sum().item())} | unlabeled count: {int(ulb_mask.sum().item())}")
+                        # print(f"[MT DEBUG] labeled count: {int(lbl_mask.sum().item())} | unlabeled count: {int(ulb_mask.sum().item())}")
                     else:
                         lbl_mask = None
                     # Ground truth stats for supervised subset
@@ -352,11 +352,11 @@ class TrainMeanTeacher(BaseTrainer):
                             t_min = float(t.min().item())
                             t_max = float(t.max().item())
                             pos_frac = float((t > 0).float().mean().item())
-                            print(f"[MT DEBUG] gt[{k}] shape: {tuple(t.shape)} | min/max: {t_min}/{t_max} | pos_frac: {pos_frac:.6f}")
+                            # print(f"[MT DEBUG] gt[{k}] shape: {tuple(t.shape)} | min/max: {t_min}/{t_max} | pos_frac: {pos_frac:.6f}")
                         except Exception as e:
-                            print(f"[MT DEBUG] gt[{k}] stats error: {e}")
+                            # print(f"[MT DEBUG] gt[{k}] stats error: {e}")
                 except Exception as e:
-                    print(f"[MT DEBUG] error during debug logging: {e}")
+                    # print(f"[MT DEBUG] error during debug logging: {e}")
 
             total_loss, task_losses = self._compute_train_loss(outputs, targets_dict, loss_fns, autocast_ctx)
 
@@ -399,7 +399,7 @@ class TrainMeanTeacher(BaseTrainer):
                 if pred_keys:
                     pk = pred_keys[0]
                     ps = tuple(outputs[pk][0].shape if isinstance(outputs[pk], (list, tuple)) else outputs[pk].shape)
-                    print(f"[MT DEBUG] [val] pred[{pk}] shape: {ps}")
+                    # print(f"[MT DEBUG] [val] pred[{pk}] shape: {ps}")
 
                 # Ground truth stats
                 for k, v in list(targets_dict.items()):
@@ -410,11 +410,11 @@ class TrainMeanTeacher(BaseTrainer):
                         t_min = float(t.min().item())
                         t_max = float(t.max().item())
                         pos_frac = float((t > 0).float().mean().item())
-                        print(f"[MT DEBUG] [val] gt[{k}] shape: {tuple(t.shape)} | min/max: {t_min}/{t_max} | pos_frac: {pos_frac:.6f}")
+                        # print(f"[MT DEBUG] [val] gt[{k}] shape: {tuple(t.shape)} | min/max: {t_min}/{t_max} | pos_frac: {pos_frac:.6f}")
                     except Exception as e:
-                        print(f"[MT DEBUG] [val] gt[{k}] stats error: {e}")
+                        # print(f"[MT DEBUG] [val] gt[{k}] stats error: {e}")
             except Exception as e:
-                print(f"[MT DEBUG] [val] error during debug logging: {e}")
+                # print(f"[MT DEBUG] [val] error during debug logging: {e}")
 
         return task_losses, inputs, targets_dict, outputs
 
