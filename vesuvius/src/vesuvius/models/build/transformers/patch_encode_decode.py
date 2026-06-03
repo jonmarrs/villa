@@ -14,20 +14,11 @@ block_style = Literal["residual", "conv"]
 class LayerNormNd(nn.Module):
     def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(num_channels))
-        self.bias = nn.Parameter(torch.zeros(num_channels))
-        self.eps = eps
+        # GroupNorm with 1 group is equivalent to LayerNorm over channels
+        self.norm = nn.GroupNorm(num_groups=1, num_channels=num_channels, eps=eps)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        u = x.mean(1, keepdim=True)
-        s = (x - u).pow(2).mean(1, keepdim=True)
-        x = (x - u) / torch.sqrt(s + self.eps)
-        idx = (None, slice(None), *([None] * (x.ndim - 2)))
-        x = (
-            self.weight[idx] * x
-            + self.bias[idx]
-        )
-        return x
+        return self.norm(x)
 
 
 class PatchEmbed(nn.Module):
