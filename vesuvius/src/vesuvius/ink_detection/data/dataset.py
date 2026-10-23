@@ -108,6 +108,10 @@ def _read_flat_surface(volume, *, y0: int, y1: int, x0: int, x1: int):
     return patch[0]
 
 
+# Bound expensive native-crop retries even when most discovered patches are unusable.
+MAX_NATIVE_RESAMPLE_ATTEMPTS = 64
+
+
 class InkDataset(Dataset):
     """Assemble samples using resolved data settings and an optional patch list."""
 
@@ -635,8 +639,11 @@ class InkDataset(Dataset):
         if self.mode == "flat":
             return self._flat_sample(self.patches[requested_index])
         current_index = requested_index
+        attempted = set()
+        max_attempts = min(len(self.patches), MAX_NATIVE_RESAMPLE_ATTEMPTS)
         while True:
             patch = self.patches[current_index]
+            attempted.add(current_index % len(self.patches))
             sample = self._native_sample(patch)
             if sample is not None:
                 return sample
@@ -645,10 +652,20 @@ class InkDataset(Dataset):
                     "Cannot resample an inadmissible native patch from a dataset "
                     "with one patch"
                 )
+            if len(attempted) >= max_attempts:
+                raise RuntimeError(
+                    f"No admissible native crop after trying {len(attempted)} distinct patches "
+                    f"for requested idx {requested_index} (dataset size {len(self.patches)}); "
+                    "check the native crop size, surface geometry and supervision masks"
+                )
             rng = random.Random(self.config.seed + current_index * 7919)
             replacement = current_index
             while replacement == current_index:
                 replacement = rng.randrange(len(self.patches))
+            # Preserve ordinary seeded retries, but escape a cycle without
+            # allocating an index list for the entire dataset.
+            while replacement in attempted:
+                replacement = (replacement + 1) % len(self.patches)
             warnings.warn(
                 "Native patch could not produce an admissible crop for "
                 f"requested idx {requested_index}, patch idx {current_index}; "
