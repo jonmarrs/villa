@@ -15,8 +15,8 @@ Then a fill-in pass seeds from the tile's 3D ridge maxima (same ridge and family
 strongest first; skipped within --fill-skip of a parallel written fiber) for fibers that cross no plane steeply
 inside the tile.
 
-Tracing streams: about --rows traces run at once (each dot traced both ways from the CT seed heading of its family;
-a dot whose CT heading is more than 35 degrees from its presence direction is skipped), and new dots start as traces
+Tracing streams: about --rows traces run at once (each dot traced both ways from the CT seed heading of its family,
+signed along its presence direction as training seeds are), and new dots start as traces
 end, in tile order, one tracer call per z row of tiles. A dot is skipped when it lies within --dedupe of a parallel
 (|cos| > 0.8) written fiber, and waits while it is within --batch-spread of a running seed. Every step, for all
 running traces at once, a trace stops
@@ -460,8 +460,6 @@ def _seed_heading(task):
         h = ct_seed_heading(_WORKER_VOL, xyz, family)
     except SeedHeadingError:
         return None
-    if abs(h @ direction) < np.cos(np.radians(35)):
-        return None
     return h if h @ direction > 0 else -h
 
 
@@ -882,7 +880,8 @@ def main(argv=None):
             z0, z1 = (float(v)*spec.ct_grid_scale/spec.grid_scale for v in args.ct_z.split(','))
             lo[2], hi[2] = z0, z1
     record = dict(vars(args), box=dict(lo=lo.tolist(), hi=hi.tolist()), operating_policy=policy.to_dict(),
-                  seed_heading_policy=SEED_HEADING_POLICY, grid_scale=spec.grid_scale, ct_zarr=spec.ct_zarr,
+                  seed_heading_policy=SEED_HEADING_POLICY, seed_heading_selection='signed_ct_axis_v1',
+                  grid_scale=spec.grid_scale, ct_zarr=spec.ct_zarr,
                   checkpoint_sha256=file_sha256(tracer.checkpoint_path))
     run_json = out/'run.json'
     if run_json.exists():
