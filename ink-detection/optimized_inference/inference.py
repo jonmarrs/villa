@@ -123,6 +123,96 @@ class InferenceConfig:
 
 CFG = InferenceConfig()
 
+# create_surface_volume_zarr writes (H, W, C). A depth-first array is (C, H, W).
+_HWC_AXES = (("y", "x", "z"), ("y", "x", "c"))
+_CHW_AXES = (("z", "y", "x"), ("c", "y", "x"))
+
+
+def _axis_names(value, where: str) -> Tuple[str, ...]:
+    """Axis names from an OME axes list or a zarr dimension list."""
+    if isinstance(value, str) or not isinstance(value, (list, tuple)):
+        raise ValueError(f"{where} must be a sequence of axis names, got {value!r}")
+    names = []
+    for item in value:
+        if isinstance(item, str):
+            names.append(item.strip().lower())
+        elif isinstance(item, dict) and "name" in item:
+            names.append(str(item["name"]).strip().lower())
+        else:
+            raise ValueError(f"{where} axis must be a name or a mapping with 'name', got {item!r}")
+    return tuple(names)
+
+
+def _declared_axis_names(array_attrs, group, dataset_path: Optional[str]) -> Optional[Tuple[str, ...]]:
+    """Names from array `_ARRAY_DIMENSIONS`/`axes` and the matching OME multiscales entry.
+
+    Absent metadata returns None. Two declarations that disagree are an error.
+    """
+    declarations = []
+    attrs = array_attrs or {}
+    array_names = None
+    for key in ("_ARRAY_DIMENSIONS", "axes"):
+        try:
+            value = attrs[key]
+        except KeyError:
+            continue
+        if value in (None, [], ()):
+            continue
+        names = _axis_names(value, f"array {key}")
+        if array_names is None:
+            array_names = names
+        elif names != array_names:
+            raise ValueError(f"Conflicting array axis declarations {array_names} and {names}")
+    if array_names is not None:
+        declarations.append(array_names)
+
+    if group is not None and dataset_path is not None:
+        for entry in getattr(group, "multiscales", None) or []:
+            if not isinstance(entry, dict) or "axes" not in entry:
+                continue
+            paths = []
+            for dataset in entry.get("datasets") or []:
+                if isinstance(dataset, dict) and "path" in dataset:
+                    paths.append(str(dataset["path"]))
+                elif isinstance(dataset, str):
+                    paths.append(dataset)
+            if str(dataset_path) not in paths:
+                continue
+            declarations.append(_axis_names(entry["axes"], "OME multiscales"))
+
+    if not declarations:
+        return None
+    first = declarations[0]
+    for other in declarations[1:]:
+        if other != first:
+            raise ValueError(f"Conflicting surface-volume axis declarations {first} and {other}")
+    return first
+
+
+def surface_volume_needs_transpose(shape, array_attrs, group=None, dataset_path: Optional[str] = None) -> bool:
+    """True when a stored (C, H, W) surface volume must be read as (H, W, C).
+
+    Declared axes are used as written: `y,x,z` or `y,x,c` stay in the writer's
+    order, and `z,y,x` or `c,y,x` are transposed. With no declaration the array
+    is the writer's (H, W, C) layout, even when H or W is the smallest side.
+    Any other declaration is an error. The shape is never used to choose a transpose.
+    """
+    shape = tuple(int(v) for v in shape)
+    names = _declared_axis_names(array_attrs, group, dataset_path)
+    if names is None:
+        return False
+    if len(names) != len(shape):
+        raise ValueError(f"Axis declaration {names} does not match shape {shape}")
+    if names in _HWC_AXES:
+        return False
+    if names in _CHW_AXES:
+        return True
+    raise ValueError(
+        f"Surface-volume axes {names} are ambiguous for shape {shape}; "
+        f"expected y,x,z or z,y,x. Refusing to guess a transpose"
+    )
+
+
 # --------------------- Disk-backed / Array-backed layers ---------------------
 class LayersSource:
     """
@@ -155,23 +245,25 @@ class LayersSource:
             if isinstance(root, ZarrGroup):
                 if "0" in root:
                     self._mm = root["0"]
+                    group, dataset_path = root, "0"
                 else:
                     raise ValueError(f"OME-Zarr group found but no '0' array present. Available keys: {list(root.keys())}")
             else:
                 self._mm = root
+                group, dataset_path = None, None
 
             raw_shape = self._mm.shape
             self._dtype = self._mm.dtype
             if len(raw_shape) != 3:
                 raise ValueError(f"Expected 3D zarr, got shape {raw_shape}")
 
-            # we support depth dimension both as first or last axis
-            min_dim_idx = raw_shape.index(min(raw_shape))
-            if min_dim_idx == 0:
-                self._needs_transpose = True
+            # Depth is last in the writer's (H, W, C) arrays, or first when axes say so.
+            self._needs_transpose = surface_volume_needs_transpose(
+                raw_shape, self._mm.attrs, group=group, dataset_path=dataset_path
+            )
+            if self._needs_transpose:
                 full_shape = (raw_shape[1], raw_shape[2], raw_shape[0])
             else:
-                self._needs_transpose = False
                 full_shape = raw_shape
 
             self._start_z = start_z if start_z is not None else 0
