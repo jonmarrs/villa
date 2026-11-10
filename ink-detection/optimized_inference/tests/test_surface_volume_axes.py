@@ -5,6 +5,7 @@ used to be transposed because H was smallest. A depth-first volume such as
 (28, 8, 80) used to be left as stored because the middle axis was smallest.
 """
 
+import logging
 import sys
 from pathlib import Path
 
@@ -156,3 +157,79 @@ def test_numpy_layers_stay_hwc():
     source = inference.LayersSource(volume)
     assert source.shape == (5, 6, 3)
     np.testing.assert_array_equal(source.read_roi(1, 4, 0, 2), volume[1:4, 0:2])
+
+
+def test_unlabeled_12_90_110_stays_untransposed(tmp_path, caplog):
+    # Axis 0 is smallest. The old rule transposed this; the writer layout does not.
+    h, w, c = 12, 90, 110
+    volume = _pattern(h, w, c)
+    path = _write_array(tmp_path / "h12.zarr", volume)
+    with caplog.at_level(logging.WARNING, logger="inference"):
+        source = inference.LayersSource(path)
+    assert source.shape == (h, w, c)
+    assert source._needs_transpose is False
+    np.testing.assert_array_equal(source.read_roi(0, h, 0, w), volume)
+    assert any("smallest side is axis 0" in r.getMessage() for r in caplog.records)
+
+
+def test_unlabeled_depth_first_shape_warns_and_is_not_transposed(tmp_path, caplog):
+    # (65, H, W) with no axes used to be transposed because 65 was smallest.
+    stored = _pattern(65, 80, 110)
+    path = _write_array(tmp_path / "c-first.zarr", stored)
+    with caplog.at_level(logging.WARNING, logger="inference"):
+        source = inference.LayersSource(path)
+    assert source._needs_transpose is False
+    assert source.shape == stored.shape
+    np.testing.assert_array_equal(source.read_roi(0, 65, 0, 80), stored)
+    assert any("smallest side is axis 0" in r.getMessage() for r in caplog.records)
+
+
+def test_ome_space_types_are_honored_and_a_wrong_type_is_rejected(tmp_path, caplog):
+    hwc = _pattern(8, 80, 28)
+    stored = np.transpose(hwc, (2, 0, 1))
+    path = tmp_path / "typed.zarr"
+    group = create_group(path, attrs={
+        "multiscales": [{
+            "axes": [
+                {"name": "z", "type": "space"},
+                {"name": "y", "type": "space"},
+                {"name": "x", "type": "space"},
+            ],
+            "datasets": [{"path": "0"}],
+        }],
+    })
+    array = group.create_array(
+        "0", shape=stored.shape, chunks=stored.shape, dtype=stored.dtype, compressor=None,
+    )
+    array[...] = stored
+    with caplog.at_level(logging.WARNING, logger="inference"):
+        source = inference.LayersSource(str(path))
+    assert source._needs_transpose is True
+    assert source.shape == (8, 80, 28)
+    np.testing.assert_array_equal(source.read_roi(0, 8, 0, 80), hwc)
+    assert not any("smallest side is axis 0" in r.getMessage() for r in caplog.records)
+
+    bad = tmp_path / "bad-type.zarr"
+    group = create_group(bad, attrs={
+        "multiscales": [{
+            "axes": [
+                {"name": "z", "type": "time"},
+                {"name": "y", "type": "space"},
+                {"name": "x", "type": "space"},
+            ],
+            "datasets": [{"path": "0"}],
+        }],
+    })
+    array = group.create_array(
+        "0", shape=stored.shape, chunks=stored.shape, dtype=stored.dtype, compressor=None,
+    )
+    array[...] = stored
+    with pytest.raises(ValueError, match="type 'time'"):
+        inference.LayersSource(str(bad))
+
+
+def test_height_width_depth_names_are_not_mapped(tmp_path):
+    volume = _pattern(8, 9, 4)
+    path = _write_array(tmp_path / "aliases.zarr", volume, axes=("height", "width", "depth"))
+    with pytest.raises(ValueError, match="not mapped"):
+        inference.LayersSource(path)

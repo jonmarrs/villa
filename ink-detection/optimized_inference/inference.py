@@ -124,22 +124,38 @@ class InferenceConfig:
 CFG = InferenceConfig()
 
 # create_surface_volume_zarr writes (H, W, C). A depth-first array is (C, H, W).
+# Published surface volumes use these names. height/width/depth/layers are not
+# aliases: nothing this reader is aimed at writes them, and accepting them would
+# hide a typo. c is the only extra name, for an explicit channel axis.
 _HWC_AXES = (("y", "x", "z"), ("y", "x", "c"))
 _CHW_AXES = (("z", "y", "x"), ("c", "y", "x"))
+_AXIS_TYPE = {"y": "space", "x": "space", "z": "space", "c": "channel"}
 
 
 def _axis_names(value, where: str) -> Tuple[str, ...]:
-    """Axis names from an OME axes list or a zarr dimension list."""
+    """Axis names from an OME axes list or a zarr dimension list.
+
+    When an OME axis mapping includes ``type``, y/x/z must be ``space`` and c
+    must be ``channel``. A missing type is left unchecked.
+    """
     if isinstance(value, str) or not isinstance(value, (list, tuple)):
         raise ValueError(f"{where} must be a sequence of axis names, got {value!r}")
     names = []
     for item in value:
+        axis_type = None
         if isinstance(item, str):
-            names.append(item.strip().lower())
+            name = item.strip().lower()
         elif isinstance(item, dict) and "name" in item:
-            names.append(str(item["name"]).strip().lower())
+            name = str(item["name"]).strip().lower()
+            if item.get("type") not in (None, ""):
+                axis_type = str(item["type"]).strip().lower()
         else:
             raise ValueError(f"{where} axis must be a name or a mapping with 'name', got {item!r}")
+        if axis_type is not None and axis_type != _AXIS_TYPE.get(name):
+            raise ValueError(
+                f"{where} axis {name!r} has type {axis_type!r}, expected {_AXIS_TYPE.get(name)!r}"
+            )
+        names.append(name)
     return tuple(names)
 
 
@@ -193,13 +209,26 @@ def surface_volume_needs_transpose(shape, array_attrs, group=None, dataset_path:
     """True when a stored (C, H, W) surface volume must be read as (H, W, C).
 
     Declared axes are used as written: `y,x,z` or `y,x,c` stay in the writer's
-    order, and `z,y,x` or `c,y,x` are transposed. With no declaration the array
-    is the writer's (H, W, C) layout, even when H or W is the smallest side.
-    Any other declaration is an error. The shape is never used to choose a transpose.
+    order, and `z,y,x` or `c,y,x` are transposed. An OME ``type``, when present,
+    must be space for y/x/z and channel for c. ``height``, ``width``, ``depth``,
+    and ``layers`` are not mapped to those names.
+
+    With no declaration the array is the writer's (H, W, C) layout, even when
+    H is the smallest side. That used to be transposed. An unlabeled depth-first
+    volume has the same shape, so this logs a warning instead of guessing. The
+    shape itself never selects the transpose.
     """
     shape = tuple(int(v) for v in shape)
     names = _declared_axis_names(array_attrs, group, dataset_path)
     if names is None:
+        if len(shape) == 3 and shape[0] < shape[1] and shape[0] < shape[2]:
+            logger.warning(
+                "Surface volume %s has no axis metadata and its smallest side is axis 0. "
+                "Reading it as (H, W, C), which is what create_surface_volume_zarr writes. "
+                "Declare z,y,x or c,y,x if this array is depth-first; the old smallest-side "
+                "rule would have transposed it.",
+                shape,
+            )
         return False
     if len(names) != len(shape):
         raise ValueError(f"Axis declaration {names} does not match shape {shape}")
@@ -209,7 +238,8 @@ def surface_volume_needs_transpose(shape, array_attrs, group=None, dataset_path:
         return True
     raise ValueError(
         f"Surface-volume axes {names} are ambiguous for shape {shape}; "
-        f"expected y,x,z or z,y,x. Refusing to guess a transpose"
+        f"expected y,x,z or z,y,x. height, width, depth, and layers are not mapped. "
+        f"Refusing to guess a transpose"
     )
 
 
